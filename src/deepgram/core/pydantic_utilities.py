@@ -84,11 +84,12 @@ class UniversalBaseModel(pydantic.BaseModel):
         return super().construct(_fields_set, **dealiased_object)
 
     def json(self, **kwargs: Any) -> str:
-        kwargs_with_defaults = {
-            "by_alias": True,
-            "exclude_unset": True,
-            **kwargs,
-        }
+        # Precompute kwargs_with_defaults only once, minimizing dict merging overhead
+        if not kwargs:
+            kwargs_with_defaults = {"by_alias": True, "exclude_unset": True}
+        else:
+            # Avoid unnecessary dict merging when kwargs is empty
+            kwargs_with_defaults = dict(by_alias=True, exclude_unset=True, **kwargs)
         if IS_PYDANTIC_V2:
             return super().model_dump_json(**kwargs_with_defaults)  # type: ignore[misc]
         return super().json(**kwargs_with_defaults)
