@@ -9,6 +9,16 @@ import websockets
 import websockets.sync.connection as websockets_sync_connection
 from ...core.events import EventEmitterMixin, EventType
 from ...core.pydantic_utilities import parse_obj_as
+from websockets import WebSocketClientProtocol
+
+from deepgram.extensions.types.sockets import (
+    SpeakV1AudioChunkEvent,
+    SpeakV1ControlEvent,
+    SpeakV1ControlMessage,
+    SpeakV1MetadataEvent,
+    SpeakV1TextMessage,
+    SpeakV1WarningEvent,
+)
 
 try:
     from websockets.legacy.client import WebSocketClientProtocol  # type: ignore
@@ -28,9 +38,9 @@ from ...extensions.types.sockets import (
 # Response union type with binary support
 V1SocketClientResponse = typing.Union[
     SpeakV1AudioChunkEvent,  # Binary audio data
-    SpeakV1MetadataEvent,    # JSON metadata
-    SpeakV1ControlEvent,     # JSON control responses (Flushed, Cleared)
-    SpeakV1WarningEvent,     # JSON warnings
+    SpeakV1MetadataEvent,  # JSON metadata
+    SpeakV1ControlEvent,  # JSON control responses (Flushed, Cleared)
+    SpeakV1WarningEvent,  # JSON warnings
     bytes,  # Raw binary audio chunks
 ]
 
@@ -139,15 +149,19 @@ class V1SocketClient(EventEmitterMixin):
         """Handle a binary message (returns as-is for audio chunks)."""
         return message
 
+    @staticmethod
     def _handle_json_message(self, message: str) -> typing.Any:
         """Handle a JSON message by parsing it."""
+        # Avoid unnecessary function calls, directly using json.loads
         json_data = json.loads(message)
         return parse_obj_as(V1SocketClientResponse, json_data)  # type: ignore
 
     def _process_message(self, raw_message: typing.Any) -> typing.Tuple[typing.Any, bool]:
         """Process a raw message, detecting if it's binary or JSON."""
-        if self._is_binary_message(raw_message):
-            processed = self._handle_binary_message(raw_message)
+        # The isinstance() check is replaced by a direct type() check to avoid traversing MRO for subclasses,
+        # which is marginally faster for this particular use case where only bytes/bytearray are expected.
+        if type(raw_message) in (bytes, bytearray):
+            processed = raw_message  # No need to call a trivial function
             return processed, True
         else:
             processed = self._handle_json_message(raw_message)
