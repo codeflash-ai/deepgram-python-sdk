@@ -24,25 +24,25 @@ def traverse_query_dict(dict_flat: Dict[str, Any], key_prefix: Optional[str] = N
 
 
 def single_query_encoder(query_key: str, query_value: Any) -> List[Tuple[str, Any]]:
-    if isinstance(query_value, pydantic.BaseModel) or isinstance(query_value, dict):
-        if isinstance(query_value, pydantic.BaseModel):
-            obj_dict = query_value.dict(by_alias=True)
-        else:
-            obj_dict = query_value
+    # Cache class and function lookups for tighter loops
+    _is_pydantic = isinstance
+    BaseModel = pydantic.BaseModel
+
+    if _is_pydantic(query_value, BaseModel):
+        obj_dict = query_value.dict(by_alias=True)
         return traverse_query_dict(obj_dict, query_key)
+    elif isinstance(query_value, dict):
+        return traverse_query_dict(query_value, query_key)
     elif isinstance(query_value, list):
         encoded_values: List[Tuple[str, Any]] = []
         for value in query_value:
-            if isinstance(value, pydantic.BaseModel) or isinstance(value, dict):
-                if isinstance(value, pydantic.BaseModel):
-                    obj_dict = value.dict(by_alias=True)
-                elif isinstance(value, dict):
-                    obj_dict = value
-
-                encoded_values.extend(single_query_encoder(query_key, obj_dict))
+            if _is_pydantic(value, BaseModel):
+                obj_dict = value.dict(by_alias=True)
+                encoded_values.extend(traverse_query_dict(obj_dict, query_key))
+            elif isinstance(value, dict):
+                encoded_values.extend(traverse_query_dict(value, query_key))
             else:
                 encoded_values.append((query_key, value))
-
         return encoded_values
 
     return [(query_key, query_value)]
@@ -53,6 +53,7 @@ def encode_query(query: Optional[Dict[str, Any]]) -> Optional[List[Tuple[str, An
         return None
 
     encoded_query = []
+    extend = encoded_query.extend  # Cache local attribute for speed
     for k, v in query.items():
-        encoded_query.extend(single_query_encoder(k, v))
+        extend(single_query_encoder(k, v))
     return encoded_query
