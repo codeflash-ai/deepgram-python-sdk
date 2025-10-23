@@ -154,7 +154,7 @@ def filter_sensitive_headers(headers: Mapping[str, str] | None) -> Dict[str, str
         # Skip sensitive headers
         if key_lower in sensitive_headers:
             continue
-        if any(key_lower.startswith(prefix) for prefix in sensitive_prefixes):
+        if key_lower.startswith(sensitive_prefixes):
             continue
             
         filtered_headers[key] = str(value)
