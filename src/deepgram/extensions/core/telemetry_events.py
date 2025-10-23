@@ -166,12 +166,15 @@ def extract_deepgram_headers(headers: Mapping[str, str] | None) -> Dict[str, str
     """Extract x-dg-* headers from response headers."""
     if not headers:
         return None
-    
+
+    # Use a generator expression to filter and lowercase x-dg- keys up front,
+    # avoiding two lower() calls on the same key and eliminating double work.
     dg_headers = {}
+    lower_startswith = str.startswith  # localize for faster invocation
     for key, value in headers.items():
-        if key.lower().startswith('x-dg-'):
-            dg_headers[key.lower()] = str(value)
-    
+        lkey = key.lower()
+        if lower_startswith(lkey, 'x-dg-'):
+            dg_headers[lkey] = str(value)
     return dg_headers if dg_headers else None
 
 
