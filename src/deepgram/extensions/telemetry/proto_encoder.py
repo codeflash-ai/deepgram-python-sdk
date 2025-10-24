@@ -9,11 +9,12 @@ from typing import Dict, List
 
 # --- Protobuf wire helpers (proto3) ---
 
+
 def _varint(value: int) -> bytes:
     if value < 0:
         # For this usage we only encode non-negative values
         value &= (1 << 64) - 1
-    out = bytearray()
+    out = []
     while value > 0x7F:
         out.append((value & 0x7F) | 0x80)
         value >>= 7
@@ -53,11 +54,11 @@ def _timestamp_message(ts_seconds: float) -> bytes:
     if nanos >= 1_000_000_000:
         sec += 1
         nanos -= 1_000_000_000
-    msg = bytearray()
-    msg += _int64(1, sec)
+    msg = []
+    msg.append(_int64(1, sec))
     if nanos:
-        msg += _key(2, 0) + _varint(nanos)
-    return bytes(msg)
+        msg.append(_key(2, 0) + _varint(nanos))
+    return b"".join(msg)
 
 
 # Map encoders: map<string,string> and map<string,double>
@@ -82,6 +83,7 @@ def _map_str_double(field_number: int, items: typing.Mapping[str, float] | None)
 
 
 # --- Schema-specific encoders (deepgram.dxtelemetry.v1) ---
+
 
 def _encode_telemetry_context(ctx: typing.Mapping[str, typing.Any]) -> bytes:
     # Map SDK context keys to proto fields
@@ -123,7 +125,7 @@ def _encode_telemetry_context(ctx: typing.Mapping[str, typing.Any]) -> bytes:
         msg += _string(11, installation_id)
     if project_id:
         msg += _string(12, project_id)
-    
+
     # Include extras as additional context attributes (field 13)
     extras = ctx.get("extras", {})
     if extras:
@@ -133,11 +135,13 @@ def _encode_telemetry_context(ctx: typing.Mapping[str, typing.Any]) -> bytes:
             if value is not None:
                 extras_map[str(key)] = str(value)
         msg += _map_str_str(13, extras_map)
-    
+
     return bytes(msg)
 
 
-def _encode_telemetry_event(name: str, ts: float, attributes: Dict[str, str] | None, metrics: Dict[str, float] | None) -> bytes:
+def _encode_telemetry_event(
+    name: str, ts: float, attributes: Dict[str, str] | None, metrics: Dict[str, float] | None
+) -> bytes:
     msg = bytearray()
     msg += _string(1, name)
     msg += _len_delimited(2, _timestamp_message(ts))
@@ -253,7 +257,7 @@ def _normalize_events(events: List[dict]) -> List[bytes]:
                 # Note: URL is never logged for privacy
                 "connection_type": "websocket",
             }
-            
+
             # Add detailed error information to attributes
             if e.get("error_type"):
                 attrs["error_type"] = str(e["error_type"])
@@ -265,7 +269,7 @@ def _normalize_events(events: List[dict]) -> List[bytes]:
                 attrs["timeout_occurred"] = str(e["timeout_occurred"])
             if e.get("duration_ms"):
                 attrs["duration_ms"] = str(e["duration_ms"])
-            
+
             # Add WebSocket handshake failure details
             if e.get("handshake_status_code"):
                 attrs["handshake_status_code"] = str(e["handshake_status_code"])
@@ -278,27 +282,27 @@ def _normalize_events(events: List[dict]) -> List[bytes]:
                 handshake_headers = e["handshake_response_headers"]
                 for header_name, header_value in handshake_headers.items():
                     # Prefix with 'handshake_' to distinguish from request headers
-                    safe_header_name = header_name.lower().replace('-', '_')
+                    safe_header_name = header_name.lower().replace("-", "_")
                     attrs[f"handshake_{safe_header_name}"] = str(header_value)
-            
+
             # Add connection parameters if available
             if e.get("connection_params"):
                 for key, value in e["connection_params"].items():
                     if value is not None:
                         attrs[f"connection_{key}"] = str(value)
-            
+
             # Add request_id if present for server-side correlation
             request_id = e.get("request_id")
             if request_id:
                 attrs["request_id"] = str(request_id)
-            
+
             # Include ALL extras in the attributes for comprehensive telemetry
             extras = e.get("extras", {})
             if extras:
                 for key, value in extras.items():
                     if value is not None and key not in attrs:
                         attrs[str(key)] = str(value)
-            
+
             rec = _encode_error_event(
                 err_type=str(e.get("error_type", e.get("error", "Error"))),
                 message=str(e.get("error_message", e.get("message", ""))),
@@ -375,5 +379,3 @@ def encode_telemetry_batch_iter(events: List[dict], context: typing.Mapping[str,
     yield _len_delimited(1, _encode_telemetry_context(context))
     for rec in _normalize_events(events):
         yield rec
-
-
