@@ -2,10 +2,13 @@
 
 # nopycln: file
 import datetime as dt
+import functools
 from collections import defaultdict
 from typing import Any, Callable, ClassVar, Dict, List, Mapping, Optional, Set, Tuple, Type, TypeVar, Union, cast
 
 import pydantic
+
+from deepgram.core.serialization import convert_and_respect_annotation_metadata
 
 IS_PYDANTIC_V2 = pydantic.VERSION.startswith("2.")
 
@@ -39,7 +42,7 @@ Model = TypeVar("Model", bound=pydantic.BaseModel)
 def parse_obj_as(type_: Type[T], object_: Any) -> T:
     dealiased_object = convert_and_respect_annotation_metadata(object_=object_, annotation=type_, direction="read")
     if IS_PYDANTIC_V2:
-        adapter = pydantic.TypeAdapter(type_)  # type: ignore[attr-defined]
+        adapter = _get_type_adapter(type_)
         return adapter.validate_python(dealiased_object)
     return pydantic.parse_obj_as(type_, dealiased_object)
 
@@ -256,3 +259,9 @@ def _get_field_default(field: PydanticField) -> Any:
             return None
         return value
     return value
+
+
+# Cache TypeAdapter creation for improved performance
+@functools.lru_cache(maxsize=32)
+def _get_type_adapter(type_: Type[Any]) -> Any:
+    return pydantic.TypeAdapter(type_)  # type: ignore[attr-defined]
